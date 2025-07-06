@@ -7,10 +7,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [dependency-groups]
-dev = [
-    "commitizen>=4.8.3",
-    "pre-commit>=4.2.0",
-]
+dev = ["commitizen>=4.8.3"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
