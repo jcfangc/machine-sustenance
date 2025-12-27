@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>全截面叠加（低分辨率背景 + 高分辨率高亮层）</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #sidebar {
+      width: 320px;
+      flex: 0 0 320px;
+      box-sizing: border-box;
+      padding: 12px 14px;
+      background-color: #f7f7f7;
+      border-right: 1px solid #ddd;
+
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 14px;
+
+      /* 关键：允许侧边栏内部滚动 */
+      height: 100vh;
+      min-height: 0;
+      /* flex 场景下让 overflow 生效 */
+      overflow-y: auto;
+      /* 超出才出现滚动条 */
+      overflow-x: hidden;
+      /* 避免横向滚动条 */
+      -webkit-overflow-scrolling: touch;
+      /* 可选：触控设备更顺 */
+      scrollbar-gutter: stable;
+    }
+
+
+    #sidebar h2 {
+      margin: 0 0 6px 0;
+      font-size: 16px;
+    }
+
+    #sidebar h3 {
+      margin: 8px 0 4px 0;
+      font-size: 13px;
+      color: #333;
+    }
+
+    #sidebar label {
+      font-weight: 500;
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    #sidebar input[type="number"],
+    #sidebar input[type="range"] {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    #sidebar .small {
+      font-size: 12px;
+      color: #666;
+    }
+
+    #warning {
+      color: #c0392b;
+      min-height: 16px;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    #plot {
+      flex: 1;
+    }
+
+    .row2 {
+      display: flex;
+      gap: 10px;
+    }
+
+    .row2>div {
+      flex: 1;
+    }
+
+    .row3 {
+      display: flex;
+      gap: 10px;
+    }
+
+    .row3>div {
+      flex: 1;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="sidebar">
+    <h2>参数设置</h2>
+
+    <h3>结构参数</h3>
+
+    <div class="row2">
+      <div>
+        <label for="tau_base">τ_base (≥0)</label>
+        <input id="tau_base" type="number" step="0.01" value="0.10" min="0" />
+      </div>
+      <div>
+        <label for="bg_opacity">背景透明度</label>
+        <input id="bg_opacity" type="range" min="0.00" max="0.20" step="0.01" value="0.04" />
+        <div class="small">值: <span id="bg_opacity_val">0.04</span></div>
+      </div>
+    </div>
+
+    <div>
+      <label for="A_param">A (&gt; 0)</label>
+      <input id="A_param" type="range" min="0.1" max="5.0" step="0.1" value="1.0" />
+      <div class="small">值: <span id="A_val">1.0</span></div>
+    </div>
+
+    <div>
+      <label for="p">p (&gt; 0)</label>
+      <input id="p" type="range" min="0.5" max="4.0" step="0.1" value="2.0" />
+      <div class="small">值: <span id="p_val">2.0</span></div>
+    </div>
+
+    <div>
+      <label for="beta">β (&gt; 0)</label>
+      <input id="beta" type="range" min="0.5" max="5.0" step="0.1" value="2.0" />
+      <div class="small">值: <span id="beta_val">2.0</span></div>
+    </div>
+
+    <div>
+      <label for="gamma">γ (≥ 0)</label>
+      <input id="gamma" type="range" min="0.0" max="5.0" step="0.1" value="1.0" />
+      <div class="small">值: <span id="gamma_val">1.0</span></div>
+    </div>
+
+    <div>
+      <label for="q">q (&gt; 0)</label>
+      <input id="q" type="range" min="0.5" max="4.0" step="0.1" value="2.0" />
+      <div class="small">值: <span id="q_val">2.0</span></div>
+    </div>
+
+    <h3>高亮截面</h3>
+    <div class="row3">
+      <div>
+        <label for="x_sel">x*（高亮）</label>
+        <input id="x_sel" type="range" min="0.0" max="1.0" step="0.01" value="0.50" />
+        <div class="small">x*: <span id="x_val">0.50</span></div>
+      </div>
+      <div>
+        <label for="snap_step">吸附步长</label>
+        <input id="snap_step" type="range" min="0.01" max="0.10" step="0.01" value="0.05" />
+        <div class="small">Δx: <span id="snap_val">0.05</span></div>
+      </div>
+    </div>
+
+    <div id="warning"></div>
+
+    <details class="small" style="margin-top:8px;">
+      <summary style="cursor:pointer;">模型语义说明</summary>
+      <div style="margin-top:6px; line-height:1.5;">
+        税率由“统一基准税率 + 垄断惩罚项”构成：<br />
+        <strong>τ(x,m,a)=τ_base + A·m<sup>p</sup>·(e<sup>βx</sup>−1)·[1+γ(1−a)<sup>q</sup>]</strong>。<br /><br />
+
+        其中，<strong>τ_base</strong> 是所有主体相同的基准税率；后面的乘积是“差异化惩罚”：
+        <ul style="margin:6px 0 0 18px; padding:0;">
+          <li><strong>x∈[0,1]</strong>：主体规模/增值税强度（由低到高归一化）。<strong>(e<sup>βx</sup>−1)</strong> 表示对高增值税主体施加非线性加重，β
+            越大，加重越陡。</li>
+          <li><strong>m∈[0,1]</strong>：垄断程度。<strong>m<sup>p</sup></strong> 表示垄断越强惩罚越高，p 控制“接近垄断时”惩罚上升的陡峭程度。</li>
+          <li><strong>a∈[0,1]</strong>：自动化程度（由“增值税/社保缴纳”等指标单调归一化；a 越大表示越自动化）。<strong>[1+γ(1−a)<sup>q</sup>]</strong>
+            是自动化不足的加成：自动化越低（a 越小），惩罚放大越明显；γ 控制强度，q 控制曲率。</li>
+        </ul>
+        因此，该模型同时满足：垄断越强、规模越大、自动化越低，惩罚税率越高；并且垄断惩罚对高增值税主体具有更强的“非线性加重”效果。
+      </div>
+    </details>
+  </div>
+
+  <div id="plot"></div>
+
+  <script>
+    // ===== 网格：背景（低分辨率）+ 高亮（高分辨率） =====
+    const nm_bg = 26, na_bg = 26;   // 背景：25x25 面片级别
+    const nm_hi = 60, na_hi = 60;   // 高亮：更细
+    const M_BG = new Float64Array(nm_bg), A_BG = new Float64Array(na_bg);
+    const M_HI = new Float64Array(nm_hi), A_HI = new Float64Array(na_hi);
+
+    (function initAxes() {
+      for (let j = 0; j < nm_bg; j++) M_BG[j] = j / (nm_bg - 1);
+      for (let i = 0; i < na_bg; i++) A_BG[i] = i / (na_bg - 1);
+      for (let j = 0; j < nm_hi; j++) M_HI[j] = j / (nm_hi - 1);
+      for (let i = 0; i < na_hi; i++) A_HI[i] = i / (na_hi - 1);
+    })();
+
+    // ===== x 切片集合（背景层）=====
+    function buildXSlices(step) {
+      const out = [];
+      const n = Math.round(1.0 / step);
+      for (let k = 0; k <= n; k++) out.push(+((k * step).toFixed(10)));
+      // 确保最后一个是 1
+      if (out[out.length - 1] !== 1.0) out.push(1.0);
+      return out;
+    }
+
+    // ===== 常量白色 surfacecolor（背景层）=====
+    function makeWhiteSC(nm, na) {
+      const Z = new Array(nm);
+      for (let j = 0; j < nm; j++) {
+        const row = new Array(na);
+        for (let i = 0; i < na; i++) row[i] = 1.0;
+        Z[j] = row;
+      }
+      return Z;
+    }
+    const WHITE_BG = makeWhiteSC(nm_bg, na_bg);
+
+    // ===== 数学 =====
+    function computeSurfaceForX(axisM, axisA, tau_base, A, p, beta, gamma, q, x_slice) {
+      const nm = axisM.length, na = axisA.length;
+      const Z = new Array(nm);
+      const xTerm = Math.exp(beta * x_slice) - 1.0;
+      for (let j = 0; j < nm; j++) {
+        const mPow = Math.pow(axisM[j], p);
+        const row = new Array(na);
+        for (let i = 0; i < na; i++) {
+          const a = axisA[i];
+          const autoFactor = 1.0 + gamma * Math.pow(1.0 - a, q);
+          row[i] = tau_base + A * mPow * xTerm * autoFactor;
+        }
+        Z[j] = row;
+      }
+      return Z;
+    }
+
+    function clipParams(tau_base, A, p, beta, gamma, q, x_sel, bg_opacity, snap_step) {
+      const eps = 1e-6;
+      let msg = [];
+      let tb = tau_base, aA = A, pp = p, bb = beta, gg = gamma, qq = q, xs = x_sel, bo = bg_opacity, ss = snap_step;
+
+      if (!isFinite(tb) || tb < 0) { tb = Math.max(0, tb || 0); msg.push("τ_base 已截断"); }
+      function pos(name, v) { if (!isFinite(v) || v <= 0) { msg.push(name + "≤0"); return eps; } return v; }
+      aA = pos("A", aA);
+      pp = pos("p", pp);
+      bb = pos("β", bb);
+      if (!isFinite(gg) || gg < 0) { gg = 0.0; msg.push("γ<0"); }
+      qq = pos("q", qq);
+
+      if (!isFinite(xs)) xs = 0.5;
+      xs = Math.max(0.0, Math.min(1.0, xs));
+
+      if (!isFinite(bo) || bo < 0) bo = 0.0;
+      bo = Math.min(0.8, bo);
+
+      if (!isFinite(ss) || ss <= 0) ss = 0.05;
+      ss = Math.max(0.01, Math.min(0.10, ss));
+
+      return { tau_base: tb, A: aA, p: pp, beta: bb, gamma: gg, q: qq, x_sel: xs, bg_opacity: bo, snap_step: ss, msg: msg.join("；") };
+    }
+
+    function snapX(x, step) {
+      const k = Math.round(x / step);
+      const v = k * step;
+      return Math.max(0.0, Math.min(1.0, +v.toFixed(10)));
+    }
+
+    function makeTitle(tau_base, A, p, beta, gamma, q, x_sel, x_snap, step, mode) {
+      const line1 = "全截面叠加（低分辨率背景 + 高分辨率高亮层）";
+      const line2 = "τ(x,m,a)=τ_base + A·m<sup>p</sup>·(e<sup>βx</sup>−1)·[1+γ(1−a)<sup>q</sup>]";
+      const line3 = `(τ_base=${tau_base.toFixed(3)}, A=${A.toFixed(3)}, p=${p.toFixed(3)}, β=${beta.toFixed(3)}, γ=${gamma.toFixed(3)}, q=${q.toFixed(3)}, x*=${x_sel.toFixed(2)} → 吸附 ${x_snap.toFixed(2)} (Δx=${step.toFixed(2)}); 更新模式: ${mode})`;
+      return line1 + "<br>" + line2 + "<br>" + line3;
+    }
+
+    // ===== 性能关键：更新分层 =====
+    // - x_sel 拖动：只更新“高亮层”的 z（高分辨率） + 更新高亮层标题（不动背景）=> 很顺滑
+    // - 结构参数拖动：实时只更新高亮层（立即反馈），背景层改为 debounce 后再刷新（降低瞬时卡顿）
+    // - 使用 Plotly.restyle/relayout 做增量更新，避免 newPlot/react 的全重建开销 citeturn1view1
+    // - layout.uirevision 保留相机状态 citeturn0search14
+    // - 背景 trace 数目仍然很多，但每个 trace 分辨率显著降低；并且大部分交互只触发 1 个 trace 的更新
+    // - 经验性：总点数固定时，trace 数越少通常越快；减少 trace 的更新频率同样有效 citeturn2search11
+
+    let X_SLICES = buildXSlices(0.05);
+    let NS = X_SLICES.length;
+
+    // trace index: [0..NS-1] 背景层；NS 为高亮层
+    function initPlot() {
+      const tau_base = 0.10, A = 1.0, p = 2.0, beta = 2.0, gamma = 1.0, q = 2.0;
+      const bg_opacity = 0.04;
+      const snap_step = 0.05;
+      const x_sel = 0.50;
+      const x_snap = snapX(x_sel, snap_step);
+
+      // 背景：全切片，低分辨率
+      const bgZs = new Array(NS);
+      let zMin = Infinity, zMax = -Infinity;
+      for (let k = 0; k < NS; k++) {
+        const Zk = computeSurfaceForX(M_BG, A_BG, tau_base, A, p, beta, gamma, q, X_SLICES[k]);
+        bgZs[k] = Zk;
+        for (let j = 0; j < nm_bg; j++) {
+          const row = Zk[j];
+          for (let i = 0; i < na_bg; i++) {
+            const v = row[i];
+            if (v < zMin) zMin = v;
+            if (v > zMax) zMax = v;
+          }
+        }
+      }
+
+      // 高亮：仅 1 层，高分辨率
+      const hiZ = computeSurfaceForX(M_HI, A_HI, tau_base, A, p, beta, gamma, q, x_snap);
+
+      const data = [];
+      for (let k = 0; k < NS; k++) {
+        data.push({
+          type: "surface",
+          x: Array.from(A_BG),
+          y: Array.from(M_BG),
+          z: bgZs[k],
+          colorscale: "Greys",
+          showscale: false,
+          opacity: bg_opacity,
+          surfacecolor: WHITE_BG,
+          cmin: 0,
+          cmax: 1
+        });
+      }
+
+      data.push({
+        type: "surface",
+        x: Array.from(A_HI),
+        y: Array.from(M_HI),
+        z: hiZ,
+        colorscale: "Viridis",
+        showscale: true,
+        opacity: 0.95,
+        colorbar: { title: "惩罚税率 τ" },
+        surfacecolor: hiZ,
+        cmin: zMin,
+        cmax: zMax
+      });
+
+      const layout = {
+        uirevision: "keep",
+        title: { text: makeTitle(tau_base, A, p, beta, gamma, q, x_sel, x_snap, snap_step, "分层更新"), x: 0.5 },
+        scene: {
+          xaxis: { title: "自动化程度 a", range: [0, 1], autorange: false },
+          yaxis: { title: "垄断程度 m", range: [0, 1], autorange: false },
+          zaxis: { title: "惩罚税率 τ" },
+          aspectmode: "manual",
+          aspectratio: { x: 1, y: 1, z: 0.7 }
+        },
+        margin: { l: 0, r: 0, t: 90, b: 0 }
+      };
+
+      Plotly.newPlot("plot", data, layout, { responsive: true });
+
+      // UI 显示
+      document.getElementById("A_val").textContent = A.toFixed(2);
+      document.getElementById("p_val").textContent = p.toFixed(2);
+      document.getElementById("beta_val").textContent = beta.toFixed(2);
+      document.getElementById("gamma_val").textContent = gamma.toFixed(2);
+      document.getElementById("q_val").textContent = q.toFixed(2);
+      document.getElementById("x_val").textContent = x_sel.toFixed(2);
+      document.getElementById("bg_opacity_val").textContent = bg_opacity.toFixed(2);
+      document.getElementById("snap_val").textContent = snap_step.toFixed(2);
+    }
+
+    // ===== 更新调度：高亮立即，背景延后 =====
+    let bgTimer = null;
+    function scheduleBackgroundUpdate(fn, delayMs) {
+      if (bgTimer) clearTimeout(bgTimer);
+      bgTimer = setTimeout(() => { bgTimer = null; fn(); }, delayMs);
+    }
+
+    function readInputs() {
+      const tau_base = parseFloat(document.getElementById("tau_base").value);
+      const A = parseFloat(document.getElementById("A_param").value);
+      const p = parseFloat(document.getElementById("p").value);
+      const beta = parseFloat(document.getElementById("beta").value);
+      const gamma = parseFloat(document.getElementById("gamma").value);
+      const q = parseFloat(document.getElementById("q").value);
+      const x_sel = parseFloat(document.getElementById("x_sel").value);
+      const bg_opacity = parseFloat(document.getElementById("bg_opacity").value);
+      const snap_step = parseFloat(document.getElementById("snap_step").value);
+      return { tau_base, A, p, beta, gamma, q, x_sel, bg_opacity, snap_step };
+    }
+
+    function writeUI(A, p, beta, gamma, q, x_sel, bg_opacity, snap_step, msg) {
+      document.getElementById("A_val").textContent = A.toFixed(2);
+      document.getElementById("p_val").textContent = p.toFixed(2);
+      document.getElementById("beta_val").textContent = beta.toFixed(2);
+      document.getElementById("gamma_val").textContent = gamma.toFixed(2);
+      document.getElementById("q_val").textContent = q.toFixed(2);
+      document.getElementById("x_val").textContent = x_sel.toFixed(2);
+      document.getElementById("bg_opacity_val").textContent = bg_opacity.toFixed(2);
+      document.getElementById("snap_val").textContent = snap_step.toFixed(2);
+      document.getElementById("warning").textContent = msg || "";
+    }
+
+    // 仅更新背景透明度（最快）
+    function updateBackgroundOpacity(bg_opacity) {
+      const plotDiv = document.getElementById("plot");
+      const traceIdx = Array.from({ length: NS }, (_, i) => i);
+      Plotly.restyle(plotDiv, { opacity: traceIdx.map(_ => bg_opacity) }, traceIdx);
+    }
+
+    // 更新高亮层（立即）
+    function updateHighlightOnly(params, x_snap, zMinMaxHint) {
+      const plotDiv = document.getElementById("plot");
+      const hiIndex = NS; // 高亮 trace index
+      const hiZ = computeSurfaceForX(M_HI, A_HI, params.tau_base, params.A, params.p, params.beta, params.gamma, params.q, x_snap);
+      Plotly.restyle(plotDiv, { z: [hiZ], surfacecolor: [hiZ] }, [hiIndex]);
+
+      // 若给了 zMinMaxHint，则同步高亮色条范围，便于“尺度稳定”
+      if (zMinMaxHint) {
+        Plotly.restyle(plotDiv, { cmin: [zMinMaxHint.zMin], cmax: [zMinMaxHint.zMax] }, [hiIndex]);
+      }
+    }
+
+    // 更新背景层（慢）：重算全部低分辨率 Z，并刷新高亮色条范围
+    function updateBackgroundAll(params, bg_opacity, x_sel, x_snap, snap_step) {
+      const plotDiv = document.getElementById("plot");
+      const traceIdx = Array.from({ length: NS }, (_, i) => i);
+
+      const bgZs = new Array(NS);
+      let zMin = Infinity, zMax = -Infinity;
+      for (let k = 0; k < NS; k++) {
+        const Zk = computeSurfaceForX(M_BG, A_BG, params.tau_base, params.A, params.p, params.beta, params.gamma, params.q, X_SLICES[k]);
+        bgZs[k] = Zk;
+        for (let j = 0; j < nm_bg; j++) {
+          const row = Zk[j];
+          for (let i = 0; i < na_bg; i++) {
+            const v = row[i];
+            if (v < zMin) zMin = v;
+            if (v > zMax) zMax = v;
+          }
+        }
+      }
+
+      Plotly.restyle(plotDiv, {
+        z: bgZs,
+        opacity: traceIdx.map(_ => bg_opacity),
+        colorscale: traceIdx.map(_ => "Greys"),
+        showscale: traceIdx.map(_ => false),
+        surfacecolor: traceIdx.map(_ => WHITE_BG),
+        cmin: traceIdx.map(_ => 0),
+        cmax: traceIdx.map(_ => 1)
+      }, traceIdx);
+
+      // 背景更新完后，同步高亮色条的 cmin/cmax（让对比更一致）
+      Plotly.restyle(plotDiv, { cmin: [zMin], cmax: [zMax] }, [NS]);
+
+      // 更新标题
+      Plotly.relayout(plotDiv, { "title.text": makeTitle(params.tau_base, params.A, params.p, params.beta, params.gamma, params.q, x_sel, x_snap, snap_step, "分层更新") });
+
+      return { zMin, zMax };
+    }
+
+    // 统一入口：按触发源选择最少更新
+    // src:
+    //  - "x": 只变 x_sel（高亮切片） => 只更新高亮层 + title
+    //  - "bgOpacity": 只变背景透明度 => 仅更新 opacity
+    //  - "struct": 结构参数变动 => 高亮立即 + 背景延后（debounce）
+    //  - "snap": 吸附步长变动 => 重建切片集合（相对重）
+    let last = { tau_base: null, A: null, p: null, beta: null, gamma: null, q: null, x_sel: null, bg_opacity: null, snap_step: null };
+
+    function diffKey(cur) {
+      const keys = [];
+      for (const k in cur) {
+        if (cur[k] !== last[k]) keys.push(k);
+      }
+      return keys;
+    }
+
+    function applyUpdate(srcHint) {
+      const cur = readInputs();
+      const clipped = clipParams(cur.tau_base, cur.A, cur.p, cur.beta, cur.gamma, cur.q, cur.x_sel, cur.bg_opacity, cur.snap_step);
+      // 回写合法值
+      document.getElementById("tau_base").value = clipped.tau_base.toFixed(2);
+      document.getElementById("A_param").value = clipped.A;
+      document.getElementById("p").value = clipped.p;
+      document.getElementById("beta").value = clipped.beta;
+      document.getElementById("gamma").value = clipped.gamma;
+      document.getElementById("q").value = clipped.q;
+      document.getElementById("x_sel").value = clipped.x_sel;
+      document.getElementById("bg_opacity").value = clipped.bg_opacity;
+      document.getElementById("snap_step").value = clipped.snap_step;
+
+      const keys = diffKey(clipped);
+      // 更新 last
+      last = { ...clipped };
+
+      // UI 数值显示
+      writeUI(clipped.A, clipped.p, clipped.beta, clipped.gamma, clipped.q, clipped.x_sel, clipped.bg_opacity, clipped.snap_step, clipped.msg);
+
+      const x_snap = snapX(clipped.x_sel, clipped.snap_step);
+
+      // 1) 背景透明度单独快路径
+      if (keys.length === 1 && keys[0] === "bg_opacity") {
+        updateBackgroundOpacity(clipped.bg_opacity);
+        return;
+      }
+
+      // 2) x_sel 变动（或仅 x_sel + bg_opacity）=> 只更新高亮层 + 标题 + (可选) 背景 opacity
+      const onlyX = keys.every(k => (k === "x_sel" || k === "bg_opacity"));
+      if (onlyX) {
+        if (keys.includes("bg_opacity")) updateBackgroundOpacity(clipped.bg_opacity);
+        updateHighlightOnly(clipped, x_snap, null);
+        Plotly.relayout(document.getElementById("plot"), { "title.text": makeTitle(clipped.tau_base, clipped.A, clipped.p, clipped.beta, clipped.gamma, clipped.q, clipped.x_sel, x_snap, clipped.snap_step, "分层更新") });
+        return;
+      }
+
+      // 3) 吸附步长变动 => 需要重建背景切片集合（最重，尽量用 change 触发）
+      if (keys.includes("snap_step")) {
+        // 重新构建 X_SLICES / NS，并彻底重建图（因为 trace 数变化）
+        // 为了保持相机，我们先读当前 camera，再 newPlot 后写回
+        const plotDiv = document.getElementById("plot");
+        const cam = plotDiv && plotDiv.layout && plotDiv.layout.scene && plotDiv.layout.scene.camera ? plotDiv.layout.scene.camera : null;
+
+        X_SLICES = buildXSlices(clipped.snap_step);
+        NS = X_SLICES.length;
+
+        // 重建背景白色 surfacecolor（尺寸不变，无需重建 WHITE_BG）
+        // 重新 newPlot：一次性
+        const bgZs = new Array(NS);
+        let zMin = Infinity, zMax = -Infinity;
+        for (let k = 0; k < NS; k++) {
+          const Zk = computeSurfaceForX(M_BG, A_BG, clipped.tau_base, clipped.A, clipped.p, clipped.beta, clipped.gamma, clipped.q, X_SLICES[k]);
+          bgZs[k] = Zk;
+          for (let j = 0; j < nm_bg; j++) {
+            const row = Zk[j];
+            for (let i = 0; i < na_bg; i++) {
+              const v = row[i];
+              if (v < zMin) zMin = v;
+              if (v > zMax) zMax = v;
+            }
+          }
+        }
+        const hiZ = computeSurfaceForX(M_HI, A_HI, clipped.tau_base, clipped.A, clipped.p, clipped.beta, clipped.gamma, clipped.q, x_snap);
+
+        const data = [];
+        for (let k = 0; k < NS; k++) {
+          data.push({
+            type: "surface",
+            x: Array.from(A_BG),
+            y: Array.from(M_BG),
+            z: bgZs[k],
+            colorscale: "Greys",
+            showscale: false,
+            opacity: clipped.bg_opacity,
+            surfacecolor: WHITE_BG,
+            cmin: 0,
+            cmax: 1
+          });
+        }
+        data.push({
+          type: "surface",
+          x: Array.from(A_HI),
+          y: Array.from(M_HI),
+          z: hiZ,
+          colorscale: "Viridis",
+          showscale: true,
+          opacity: 0.95,
+          colorbar: { title: "惩罚税率 τ" },
+          surfacecolor: hiZ,
+          cmin: zMin,
+          cmax: zMax
+        });
+
+        const layout = {
+          uirevision: "keep",
+          title: { text: makeTitle(clipped.tau_base, clipped.A, clipped.p, clipped.beta, clipped.gamma, clipped.q, clipped.x_sel, x_snap, clipped.snap_step, "分层更新"), x: 0.5 },
+          scene: {
+            xaxis: { title: "自动化程度 a", range: [0, 1], autorange: false },
+            yaxis: { title: "垄断程度 m", range: [0, 1], autorange: false },
+            zaxis: { title: "惩罚税率 τ" },
+            aspectmode: "manual",
+            aspectratio: { x: 1, y: 1, z: 0.7 }
+          },
+          margin: { l: 0, r: 0, t: 90, b: 0 }
+        };
+        if (cam) layout.scene.camera = cam; // 尝试恢复相机
+
+        Plotly.newPlot("plot", data, layout, { responsive: true });
+        return;
+      }
+
+      // 4) 结构参数变动：高亮立即更新；背景延后更新（debounce）
+      // 先更新高亮（即时反馈）
+      updateHighlightOnly(clipped, x_snap, null);
+      Plotly.relayout(document.getElementById("plot"), { "title.text": makeTitle(clipped.tau_base, clipped.A, clipped.p, clipped.beta, clipped.gamma, clipped.q, clipped.x_sel, x_snap, clipped.snap_step, "高亮即时 / 背景延后") });
+
+      // 背景延后更新（可调：150~250ms 之间）
+      scheduleBackgroundUpdate(() => {
+        const mm = updateBackgroundAll(clipped, clipped.bg_opacity, clipped.x_sel, x_snap, clipped.snap_step);
+        // 背景更新后再同步一次高亮（确保 colorbar 范围一致）
+        updateHighlightOnly(clipped, x_snap, mm);
+        Plotly.relayout(document.getElementById("plot"), { "title.text": makeTitle(clipped.tau_base, clipped.A, clipped.p, clipped.beta, clipped.gamma, clipped.q, clipped.x_sel, x_snap, clipped.snap_step, "分层更新") });
+      }, 220);
+    }
+
+    window.addEventListener("load", function () {
+      initPlot();
+      // 初始化 last（避免第一次 diff 误判）
+      last = { ...clipParams(...Object.values(readInputs())) };
+
+      // x_sel：拖动时只更新高亮（不卡）；bg_opacity：实时更新
+      document.getElementById("x_sel").addEventListener("input", () => applyUpdate("x"));
+      document.getElementById("bg_opacity").addEventListener("input", () => applyUpdate("bgOpacity"));
+
+      // 结构参数：拖动会触发“高亮即时 / 背景延后”
+      ["A_param", "p", "beta", "gamma", "q"].forEach(id => {
+        document.getElementById(id).addEventListener("input", () => applyUpdate("struct"));
+      });
+      document.getElementById("tau_base").addEventListener("change", () => applyUpdate("struct"));
+      document.getElementById("tau_base").addEventListener("blur", () => applyUpdate("struct"));
+
+      // 吸附步长：用 change（避免频繁重建）
+      document.getElementById("snap_step").addEventListener("change", () => applyUpdate("snap"));
+    });
+  </script>
+</body>
+
+</html>
