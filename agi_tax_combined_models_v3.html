@@ -1,0 +1,953 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title> 双权重税制：垄断税 × 低效税 </title>
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --card: #0f1620;
+      --card2: #0c121a;
+      --line: #1f2a37;
+      --text: #e5e7eb;
+      --muted: #9aa4b2;
+      --bar: #0f1620ee;
+      --shadow: 0 10px 26px rgba(0, 0, 0, .45);
+      --radius: 12px;
+      --focus: #7aa2ff;
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      /* left pane scrolls */
+    }
+
+    header {
+      padding: 10px 14px 6px;
+      border-bottom: 1px solid var(--line);
+      background: var(--card);
+    }
+
+    h1 {
+      font-size: 16px;
+      margin: 0;
+      font-weight: 700;
+      color: var(--text)
+    }
+
+    /* main split: left=60% (scroll), right=40% (sticky) */
+    #main {
+      display: flex;
+      height: calc(100vh - 48px);
+      max-width: 100vw;
+      margin: 0 auto;
+    }
+
+    #left {
+      flex: 0 0 60%;
+      min-width: 0;
+      overflow-y: auto;
+      padding: 12px 12px 110px;
+    }
+
+    #right {
+      flex: 0 0 40%;
+      min-width: 0;
+      padding: 12px 12px 110px;
+    }
+
+    @media (max-width:1100px) {
+      body {
+        overflow: auto;
+        height: auto
+      }
+
+      #main {
+        flex-direction: column;
+        height: auto
+      }
+
+      #left,
+      #right {
+        flex: 1 1 auto;
+        padding-bottom: 140px;
+        overflow: visible
+      }
+
+      #right {
+        padding-top: 0
+      }
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 1px 0 rgba(0, 0, 0, .20);
+    }
+
+    /* left grid: 2 per row for plots 1-6 */
+    #grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width:1100px) {
+      #grid {
+        grid-template-columns: 1fr
+      }
+    }
+
+    .plot-card {
+      padding: 10px 10px 8px
+    }
+
+    .plot-card h2 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      font-weight: 650;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      color: var(--text);
+    }
+
+    .plot {
+      width: 100%;
+      height: 400px
+    }
+
+    @media (max-width:1100px) {
+      .plot {
+        height: 360px
+      }
+    }
+
+    /* plot 7 right pane */
+    #p7wrap {
+      position: sticky;
+      top: 10px;
+      padding: 10px 10px 8px;
+      height: calc(100vh - 48px - 20px - 110px);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    @media (max-width:1100px) {
+      #p7wrap {
+        position: static;
+        height: auto
+      }
+    }
+
+    #p7 {
+      flex: 1 1 auto;
+      min-height: 520px
+    }
+
+    /* per-plot explanation tooltip under plot (shows on hover/focus) */
+    .sym {
+      position: relative;
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .sym .trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12.5px;
+      color: var(--muted);
+      cursor: help;
+      user-select: none;
+      outline: none;
+    }
+
+    .sym:focus-within .trigger {
+      color: var(--text)
+    }
+
+    .sym .trigger .dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      line-height: 1;
+      background: var(--card2);
+      color: var(--muted);
+    }
+
+    .sym .tip {
+      position: absolute;
+      left: 0;
+      bottom: 26px;
+      min-width: min(720px, calc(100vw - 40px));
+      max-width: 900px;
+      padding: 10px 12px;
+      background: #111827;
+      /* slightly lighter than pure black */
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, .06);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translateY(6px);
+      pointer-events: none;
+      transition: opacity .15s ease, transform .15s ease;
+      font-size: 12.5px;
+      line-height: 1.5;
+      z-index: 10;
+      white-space: pre-wrap;
+    }
+
+    .sym:hover .tip,
+    .sym:focus-within .tip {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .sym .tip code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      color: #dbeafe;
+    }
+
+    /* fixed controls bar at bottom (bigger) */
+    #controlsBar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bar);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      z-index: 999;
+    }
+
+    #controlsInner {
+      max-width: none;
+      /* 让它别被 1920 限制 */
+      margin: 0;
+      padding: 16px 18px;
+      /* 变厚 */
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      /* 组间距变大 */
+      flex-wrap: wrap;
+    }
+
+    .ctrlGroup {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      /* 组内距变大 */
+      flex-wrap: wrap;
+    }
+
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 20px;
+      /* 变大 */
+      color: var(--muted);
+    }
+
+    select,
+    button {
+      padding: 12px 16px;
+      /* 控件变大 */
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 20px;
+    }
+
+    input[type=range] {
+      width: min(720px, 50vw);
+      /* 滑条更长 */
+      height: 28px;
+      /* 提升可点性（部分浏览器有效） */
+      accent-color: var(--focus);
+    }
+
+    input[type=number],
+    input[type=text] {
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--text);
+      font-size: 20px;
+      width: 180px;
+    }
+
+    input::placeholder {
+      color: var(--muted);
+    }
+
+
+    #betaVal {
+      font-variant-numeric: tabular-nums;
+      min-width: 74px;
+      font-size: 20px;
+      text-align: right;
+      color: var(--text);
+    }
+
+
+    /* Plotly modebar (icons) */
+    .modebar {
+      background: transparent !important
+    }
+
+    .modebar-btn {
+      background: transparent !important
+    }
+
+    .modebar-btn path {
+      fill: var(--muted) !important
+    }
+
+    .modebar-btn:hover path {
+      fill: var(--text) !important
+    }
+  </style>
+
+</head>
+
+<body>
+  <header>
+    <h1> 双权重税制：垄断税 × 低效税 </h1>
+  </header>
+
+  <div id="main">
+    <!-- Left: plots 1-6 in 2-per-row grid (scrollable) -->
+    <div id="left">
+      <div id="grid">
+        <section class="card plot-card">
+          <h2><span>1. 行业产值图</span></h2>
+          <div id="p1" class="plot"></div>
+          <div class="sym" tabindex="0">
+            <span class="trigger"><span class="dot">i</span>指标说明（悬浮查看）</span>
+            <div class="tip">
+              这张图展示每个“行业主体”的【产值】。
+              - 横轴：主体编号（0~N-1），仅用于区分不同主体
+              - 纵轴：产值（随机生成）
+              - 产值越大，表示该主体对行业总产出的贡献越大
+
+              符号对照：
+              - 产值 = V_i
+              - 主体数 = N（本页固定 N=512）
+            </div>
+          </div>
+        </section>
+
+        <section class="card plot-card">
+          <h2><span>2. 行业主体雇佣人数图</span></h2>
+          <div id="p2" class="plot"></div>
+          <div class="sym" tabindex="0">
+            <span class="trigger"><span class="dot">i</span>指标说明（悬浮查看）</span>
+            <div class="tip">
+              这张图展示每个“行业主体”的【雇佣人数】。
+              - 横轴：主体编号（0~N-1）
+              - 纵轴：雇佣人数（随机生成、取整且 ≥ 1）
+              - 雇佣人数用于计算“人均产值”，从而得到“低效程度”
+
+              符号对照：
+              - 雇佣人数 = L_i
+              - EPS：数值稳定用的小量（避免除零）
+            </div>
+          </div>
+        </section>
+
+        <section class="card plot-card">
+          <h2><span>3. 垄断比例图</span></h2>
+          <div id="p3" class="plot"></div>
+          <div class="sym" tabindex="0">
+            <span class="trigger"><span class="dot">i</span>指标说明（悬浮查看）</span>
+            <div class="tip">
+              这张图把“垄断程度”定义为【相对平均产值的倍数】。
+              - 先算平均产值：平均产值 = μ = (∑产值)/N
+              - 再算垄断程度：垄断程度 = ρ_i = 产值 / 平均产值
+
+              读图方式：
+              - y=1 的虚线：刚好等于平均水平
+              - ρ_i > 1：该主体产值高于平均（更“集中/偏垄断”）
+              - ρ_i < 1：该主体产值低于平均 - 横轴 k：按产值从小到大排序后的名次（便于看分布形状） 符号对照： - 平均产值=μ - 垄断程度=ρ_i - 排序索引=k=argsort(产值) </div>
+            </div>
+        </section>
+
+        <section class="card plot-card">
+          <h2><span>4. 低效比例图</span></h2>
+          <div id="p4" class="plot"></div>
+          <div class="sym" tabindex="0">
+            <span class="trigger"><span class="dot">i</span>指标说明（悬浮查看）</span>
+            <div class="tip">
+              这张图把“低效程度”定义为【相对平均人均产值的“反比倍数”】【越大越低效】。
+              - 先算人均产值：人均产值 = a_i = 产值 / 雇佣人数
+              - 再算平均人均产值：平均人均产值 = ā = (∑a_i)/N
+              - 再定义低效程度：低效程度 = κ_i = 平均人均产值 / 人均产值
+
+              读图方式：
+              - y=1 的虚线：刚好等于平均效率
+              - κ_i > 1：人均产值低于平均 ⇒ 更低效
+              - κ_i < 1：人均产值高于平均 ⇒ 更高效 - 横轴 k：按人均产值从小到大排序后的名次 符号对照： - 人均产值=a_i - 平均人均产值=ā - 低效程度=κ_i </div>
+            </div>
+        </section>
+
+        <section class="card plot-card">
+          <h2><span>5. 垄断税权重</span></h2>
+          <div id="p5" class="plot"></div>
+          <div class="sym" tabindex="0">
+            <span class="trigger"><span class="dot">i</span>指标说明（悬浮查看）</span>
+            <div class="tip">
+              这张图把“垄断程度”转成【垄断税分配权重】（所有主体权重加和为 1）。
+              - 输入：垄断程度 ρ_i
+              - 调节强度：β（滑条 0~2）
+              - 计算：u_i = β · ρ_i
+              - 再 softmax 得到：垄断税权重 = w^M_i = softmax(u)_i
+
+              读图方式：
+              - β 越大：权重越向“垄断更强（ρ更大）”的主体集中
+              - β 越小：更接近平均分配
+
+              软最大（稳定写法）：
+              m = max(u)
+              w_i = exp(u_i - m) / (∑exp(u_k - m) + EPS)
+
+              图中横轴仍按【产值】从小到大排序（与图3对齐）
+            </div>
+          </div>
+        </section>
+
+        <section class="card plot-card">
+          <h2><span>6. 低效税权重</span></h2>
+          <div id="p6" class="plot"></div>
+          <div class="sym" tabindex="0">
+            <span class="trigger"><span class="dot">i</span>指标说明（悬浮查看）</span>
+            <div class="tip">
+              这张图把“低效程度”转成【低效税分配权重】（所有主体权重加和为 1）。
+              - 输入：低效程度 κ_i
+              - 调节强度：βᵃ = (2 - β) （与你设定一致：垄断侧用 β，AGI 侧用 2-β）
+              - 计算：u_i = βᵃ · (κ_i - 1)
+              - 再 softmax 得到：低效税权重 = w^A_i = softmax(u)_i
+
+              读图方式：
+              - (2-β) 越大：权重越向“更低效（κ更大）”的主体集中
+              - (2-β) 越小：更接近平均分配
+
+              图中横轴按【人均产值】从小到大排序（与图4对齐）
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Right: plot 7 follows view -->
+    <div id="right">
+      <section id="p7wrap" class="card">
+        <h2
+          style="margin:0;font-size:13px;font-weight:650;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+          <span>7. 综合税率三维视角</span>
+        </h2>
+        <div id="p7"></div>
+        <div class="sym" tabindex="0">
+          <span class="trigger"><span class="dot">i</span>指标说明（悬浮查看）</span>
+          <div class="tip">
+            三维图把每个主体映射到一个点：
+            - x：垄断程度（ρ_i）= 产值 / 平均产值
+            - y：低效程度（κ_i）= 平均人均产值 / 人均产值
+            - z：综合税率（t_i）= 该主体最终应承担的“综合税分配比例”
+
+            综合税率如何得到：
+            1) 先得到两套“分配权重”（各自加和为1）
+            - 垄断税权重：w^M_i = softmax(β · ρ_i)
+            - 低效税权重：w^A_i = softmax((2-β) · (κ_i - 1))
+
+            2) 把两部分税“相加”后，再对全体主体做一次归一化：
+            raw_i = w^M_i + w^A_i
+            t_i = raw_i / (∑raw + EPS)
+
+            因此：
+            - z 轴 t_i 的总和固定为 1
+            - 某个点越“高”，表示该主体在综合税中占比越大
+          </div>
+        </div>
+    </div>
+    </section>
+  </div>
+  </div>
+
+  <div id="controlsBar">
+    <div id="controlsInner">
+      <div class="ctrlGroup">
+        <label>
+          <span>随机分布</span>
+          <select id="dist">
+            <option value="uniform">均匀分布</option>
+            <option value="normal">正态分布</option>
+            <option value="powerlaw">幂律分布</option>
+          </select>
+        </label>
+        <button id="randBtn">🎲 随机刷新</button>
+      </div>
+
+      <div class="ctrlGroup">
+        <label>
+          <span>突出ID</span>
+          <input id="hilite" type="number" min="0" max="511" step="1" placeholder="空=不突出" />
+        </label>
+      </div>
+
+
+      <div class="ctrlGroup">
+        <label>
+          <span> 追求效率 <-> 追求公平 </span>
+          <input id="beta" type="range" min="0.00" max="2.00" step="0.05" value="0.50" />
+          <span id="betaVal">0.50</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const N = 512;
+    const EPS = 1e-12;
+
+    const DARK2D = {
+      paper_bgcolor: "#0f1620",
+      plot_bgcolor: "#0f1620",
+      font: { color: "#e5e7eb" },
+      xaxis: { gridcolor: "#1f2a37", zerolinecolor: "#1f2a37", linecolor: "#1f2a37", tickfont: { color: "#e5e7eb" }, titlefont: { color: "#e5e7eb" } },
+      yaxis: { gridcolor: "#1f2a37", zerolinecolor: "#1f2a37", linecolor: "#1f2a37", tickfont: { color: "#e5e7eb" }, titlefont: { color: "#e5e7eb" } },
+    };
+
+    const DARK3D = {
+      paper_bgcolor: "#0f1620",
+      plot_bgcolor: "#0f1620",
+      font: { color: "#e5e7eb" },
+      scene: {
+        bgcolor: "#0f1620",
+        xaxis: { gridcolor: "#1f2a37", zerolinecolor: "#1f2a37", color: "#e5e7eb", titlefont: { color: "#e5e7eb" } },
+        yaxis: { gridcolor: "#1f2a37", zerolinecolor: "#1f2a37", color: "#e5e7eb", titlefont: { color: "#e5e7eb" } },
+        zaxis: { gridcolor: "#1f2a37", zerolinecolor: "#1f2a37", color: "#e5e7eb", titlefont: { color: "#e5e7eb" } },
+      }
+    };
+
+
+    // function hslColor(i, n) {
+    //   const h = (i * 360.0 / n) % 360.0;
+    //   return `hsl(${h.toFixed(1)},70%,50%)`;
+    // }
+    // const COLORS = Array.from({ length: N }, (_, i) => hslColor(i, N));
+
+    function randn() { // Box-Muller
+      let u = 0, v = 0;
+      while (u === 0) u = Math.random();
+      while (v === 0) v = Math.random();
+      return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+    }
+
+    function argsort(arr) {
+      return arr.map((v, i) => [v, i]).sort((a, b) => a[0] - b[0]).map(p => p[1]);
+    }
+
+    function stableSoftmax(x) {
+      let m = -Infinity;
+      for (const v of x) if (v > m) m = v;
+      const ex = x.map(v => Math.exp(v - m));
+      const s = ex.reduce((a, b) => a + b, 0) + EPS;
+      return ex.map(v => v / s);
+    }
+
+    const clamp01 = x => x < 0 ? 0 : (x > 1 ? 1 : x);
+
+    function hslToRgb01(h, s, l) { // h,s,l in [0,1]
+      const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      };
+      if (s === 0) return [l, l, l];
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      return [
+        hue2rgb(p, q, h + 1 / 3),
+        hue2rgb(p, q, h),
+        hue2rgb(p, q, h - 1 / 3),
+      ];
+    }
+
+    function rgbaFromHsl(hDeg, sPct, lPct, a) {
+      const h = ((hDeg % 360) + 360) % 360 / 360;
+      const s = clamp01(sPct / 100);
+      const l = clamp01(lPct / 100);
+      const [r, g, b] = hslToRgb01(h, s, l).map(x => Math.round(x * 255));
+      return `rgba(${r},${g},${b},${a})`;
+    }
+
+    function minMax(arr) {
+      let mn = Infinity, mx = -Infinity;
+      for (const v of arr) { if (v < mn) mn = v; if (v > mx) mx = v; }
+      return [mn, mx];
+    }
+
+    function getHighlightId() { return hiliteCommitted; }
+
+    // 颜色映射：H=id, S=rho(越高越饱和), L=kappa(越高越亮)
+    function buildColors(rho, kappa, alphaFn) {
+      const [r0, r1] = minMax(rho);
+      const [k0, k1] = minMax(kappa);
+      const dr = (r1 - r0) + EPS;
+      const dk = (k1 - k0) + EPS;
+
+      const S_MIN = 50, S_MAX = 100;  // 饱和度范围
+      const L_MIN = 50, L_MAX = 100;  // 亮度范围（更低效更亮 => kappa 越大 L 越大）
+
+      const out = new Array(N);
+      for (let i = 0; i < N; i++) {
+        const h = i * 360 / N;
+        const rn = clamp01((rho[i] - r0) / dr);
+        const kn = clamp01((kappa[i] - k0) / dk);
+        const s = S_MIN + rn * (S_MAX - S_MIN);
+        const l = L_MIN + kn * (L_MAX - L_MIN);
+        out[i] = rgbaFromHsl(h, s, l, alphaFn(i));
+      }
+      return out;
+    }
+
+
+    function sampleUniform(min, max) { return min + (max - min) * Math.random(); }
+    function sampleNormalPos(mean, sd, minPos) { return Math.max(minPos, mean + sd * randn()); }
+    function samplePareto(xmin, alpha) { // inverse transform
+      const u = Math.random();
+      return xmin * Math.pow(1.0 - u, -1.0 / alpha);
+    }
+
+    function genData(dist) {
+      let V, L;
+      if (dist === "uniform") {
+        V = Array.from({ length: N }, _ => sampleUniform(1, 21));
+        L = Array.from({ length: N }, _ => 1 + Math.floor(sampleUniform(0, 200)));
+      } else if (dist === "normal") {
+        V = Array.from({ length: N }, _ => sampleNormalPos(10, 3, 0.1));
+        L = Array.from({ length: N }, _ => Math.max(1, Math.floor(sampleNormalPos(60, 20, 1))));
+      } else { // powerlaw
+        V = Array.from({ length: N }, _ => Math.min(1000, 8 * samplePareto(1, 1.6)));
+        L = Array.from({ length: N }, _ => Math.max(1, Math.floor(Math.min(2000, 30 * samplePareto(1, 1.8)))));
+      }
+      return { V, L };
+    }
+
+    function computeMonopoly(V, beta) {
+      const mu = V.reduce((a, b) => a + b, 0) / (V.length + EPS);
+      const rho = V.map(v => v / (mu + EPS));
+      const u = rho.map(r => beta * r);
+      const w = stableSoftmax(u);
+      const ord = argsort(V);
+      return { mu, rho, w, ord };
+    }
+
+    function computeAGI(V, L, betaAGI) {
+      const a = V.map((v, i) => v / (L[i] + EPS));
+      const meanA = a.reduce((p, c) => p + c, 0) / (a.length + EPS);
+      const kappa = a.map(x => meanA / (x + EPS));
+      const u = kappa.map(k => betaAGI * (k - 1.0));
+      const w = stableSoftmax(u);
+      const ord = argsort(a);
+      return { a, meanA, kappa, w, ord };
+    }
+
+    // state
+    let beta = 0.50;
+    let dist = "uniform";
+    let { V, L } = genData(dist);
+    let p7Camera = null;
+    let p7UiRev = 1; // 可选：用于随机刷新时重置视角
+    let hiliteCommitted = null; // 只有回车才更新这个
+
+
+    function renderAll() {
+      const betaAGI = 2.0 - beta;
+      const idx = Array.from({ length: N }, (_, i) => i);
+
+      const M = computeMonopoly(V, beta);
+      const A = computeAGI(V, L, betaAGI);
+
+      const hi = getHighlightId();
+
+      // 不同图层给不同“底噪透明度”，避免全屏太暗/太刺眼
+      const alphaBar = i => hi == null ? 1.00 : (i === hi ? 1.00 : 0.05);
+      const alpha2d = i => hi == null ? 1.00 : (i === hi ? 1.00 : 0.05);
+
+      const C_BAR = buildColors(M.rho, A.kappa, alphaBar);
+      const C_2D = buildColors(M.rho, A.kappa, alpha2d);
+      const C_3D = buildColors(M.rho, A.kappa, _ => 1.00);
+
+
+      // Precompute sorted helpers
+      const ordV = M.ord, ordA = A.ord;
+      const k = Array.from({ length: N }, (_, i) => i);
+
+      const V_sorted = ordV.map(i => V[i]);
+      const rho_sorted = ordV.map(i => M.rho[i]);
+      const wM_sorted = ordV.map(i => M.w[i]);
+      const colorsV = ordV.map(i => C_2D[i]);
+      const idV = ordV.map(i => i);
+
+      const a_sorted = ordA.map(i => A.a[i]);
+      const k_sorted = ordA.map(i => A.kappa[i]);
+      const wA_sorted = ordA.map(i => A.w[i]);
+      const colorsA = ordA.map(i => C_2D[i]);
+      const idA = ordA.map(i => i);
+
+      // 1) 产值
+      Plotly.react("p1", [{
+        type: "bar",
+        x: idx,
+        y: V,
+        marker: { color: C_BAR },
+        hovertext: V.map((v, i) => `主体ID=${i}<br>产值=${v.toPrecision(6)}`),
+        hoverinfo: "text",
+        showlegend: false
+      }], {
+        ...DARK2D,
+        margin: { l: 52, r: 12, t: 10, b: 42 },
+        xaxis: { ...DARK2D.xaxis, title: "主体编号" },
+        yaxis: { ...DARK2D.yaxis, title: "产值" },
+      }, { displayModeBar: false, responsive: true });
+
+      // 2) 雇佣人数
+      Plotly.react("p2", [{
+        type: "bar",
+        x: idx,
+        y: L,
+        marker: { color: C_BAR },
+        hovertext: L.map((v, i) => `主体ID=${i}<br>雇佣人数=${v}`),
+        hoverinfo: "text",
+        showlegend: false
+      }], {
+        ...DARK2D,
+        margin: { l: 52, r: 12, t: 10, b: 42 },
+        xaxis: { ...DARK2D.xaxis, title: "主体编号" },
+        yaxis: { ...DARK2D.yaxis, title: "雇佣人数" },
+      }, { displayModeBar: false, responsive: true });
+
+      // 3) 垄断程度（按产值排序）
+      Plotly.react("p3", [{
+        type: "scatter",
+        mode: "lines+markers",
+        x: k,
+        y: rho_sorted,
+        line: { color: "rgba(229,231,235,0.35)" },
+        marker: { color: colorsV, size: 7 },
+        hovertext: rho_sorted.map((v, idx2) => `主体ID=${idV[idx2]}<br>垄断程度=${v.toPrecision(6)}<br>产值(排序)=${V_sorted[idx2].toPrecision(6)}`),
+        hoverinfo: "text",
+        showlegend: false
+      }, {
+        type: "scatter",
+        mode: "lines",
+        x: k,
+        y: k.map(_ => 1.0),
+        line: { color: "rgba(229,231,235,0.25)", dash: "dash" },
+        hoverinfo: "skip",
+        showlegend: false
+      }], {
+        ...DARK2D,
+        margin: { l: 52, r: 12, t: 10, b: 42 },
+        xaxis: { ...DARK2D.xaxis, title: "名次 k（按产值从小到大）" },
+        yaxis: { ...DARK2D.yaxis, title: "垄断程度（相对平均）" },
+      }, { displayModeBar: false, responsive: true });
+
+      // 4) 低效程度（按人均产值排序）
+      Plotly.react("p4", [{
+        type: "scatter",
+        mode: "lines+markers",
+        x: k,
+        y: k_sorted,
+        line: { color: "rgba(229,231,235,0.35)" },
+        marker: { color: colorsA, size: 7 },
+        hovertext: k_sorted.map((v, idx2) => `主体ID=${idA[idx2]}<br>低效程度=${v.toPrecision(6)}<br>人均产值(排序)=${a_sorted[idx2].toPrecision(6)}`),
+        hoverinfo: "text",
+        showlegend: false
+      }, {
+        type: "scatter",
+        mode: "lines",
+        x: k,
+        y: k.map(_ => 1.0),
+        line: { color: "rgba(229,231,235,0.25)", dash: "dash" },
+        hoverinfo: "skip",
+        showlegend: false
+      }], {
+        ...DARK2D,
+        margin: { l: 52, r: 12, t: 10, b: 42 },
+        xaxis: { ...DARK2D.xaxis, title: "名次 k（按人均产值从小到大）" },
+        yaxis: { ...DARK2D.yaxis, title: "低效程度（相对平均）" },
+      }, { displayModeBar: false, responsive: true });
+
+      // 5) 垄断税权重（按产值排序）
+      Plotly.react("p5", [{
+        type: "scatter",
+        mode: "lines+markers",
+        x: k,
+        y: wM_sorted,
+        line: { color: "rgba(229,231,235,0.35)" },
+        marker: { color: colorsV, size: 7 },
+        hovertext: wM_sorted.map((v, idx2) => `主体ID=${idV[idx2]}<br>垄断税权重=${v.toPrecision(6)}<br>垄断程度=${rho_sorted[idx2].toPrecision(6)}`),
+        hoverinfo: "text",
+        showlegend: false
+      }], {
+        ...DARK2D,
+        margin: { l: 52, r: 12, t: 10, b: 42 },
+        xaxis: { ...DARK2D.xaxis, title: "名次 k（按产值）" },
+        yaxis: { ...DARK2D.yaxis, title: "垄断税权重（加和=1）" },
+      }, { displayModeBar: false, responsive: true });
+
+      // 6) 低效税权重（按人均产值排序）
+      Plotly.react("p6", [{
+        type: "scatter",
+        mode: "lines+markers",
+        x: k,
+        y: wA_sorted,
+        line: { color: "rgba(229,231,235,0.35)" },
+        marker: { color: colorsA, size: 7 },
+        hovertext: wA_sorted.map((v, idx2) => `主体ID=${idA[idx2]}<br>低效税权重=${v.toPrecision(6)}<br>低效程度=${k_sorted[idx2].toPrecision(6)}`),
+        hoverinfo: "text",
+        showlegend: false
+      }], {
+        ...DARK2D,
+        margin: { l: 52, r: 12, t: 10, b: 42 },
+        xaxis: { ...DARK2D.xaxis, title: "名次 k（按人均产值）" },
+        yaxis: { ...DARK2D.yaxis, title: "低效税权重（加和=1）" },
+      }, { displayModeBar: false, responsive: true });
+
+      // 7) 三维综合税率：t_i = normalize(wM + wA)
+      const raw = idx.map(i => M.w[i] + A.w[i]);
+      const denom = raw.reduce((a, b) => a + b, 0) + EPS;
+      const t = raw.map(v => v / denom);
+
+      const gd7 = document.getElementById("p7");
+      if (gd7 && gd7._fullLayout?.scene?.camera) p7Camera = gd7._fullLayout.scene.camera;
+
+      const xs = idx.map(i => M.rho[i]);
+      const ys = idx.map(i => A.kappa[i]);
+      const zs = t;
+
+      const mkTrace = (keep, opacity, sizeBoost) => {
+        const X = [], Y = [], Z = [], C = [], H = [];
+        for (let i = 0; i < N; i++) if (keep(i)) {
+          X.push(xs[i]); Y.push(ys[i]); Z.push(zs[i]); C.push(C_3D[i]); H.push(i);
+        }
+        return {
+          type: "scatter3d", mode: "markers", x: X, y: Y, z: Z,
+          opacity,
+          marker: { size: 4 + (sizeBoost || 0), color: C },
+          hovertext: H.map(i =>
+            `主体ID=${i}` +
+            `<br>产值=${V[i].toPrecision(6)}` +
+            `<br>雇佣人数=${L[i]}` +
+            `<br>垄断程度=${M.rho[i].toPrecision(6)}` +
+            `<br>低效程度=${A.kappa[i].toPrecision(6)}` +
+            `<br>垄断税权重=${M.w[i].toPrecision(6)}` +
+            `<br>低效税权重=${A.w[i].toPrecision(6)}` +
+            `<br>综合税率=${t[i].toPrecision(6)}`
+          ),
+          hoverinfo: "text",
+          showlegend: false
+        };
+      };
+
+      const traces = (hi == null)
+        ? [mkTrace(_ => true, 1.0, 0)]
+        : [mkTrace(i => i !== hi, 0.05, 0), mkTrace(i => i === hi, 1.0, 2)];
+
+      Plotly.react("p7", traces, {
+        ...DARK3D,
+        margin: { l: 0, r: 0, t: 10, b: 0 },
+        uirevision: p7UiRev,
+        scene: {
+          ...DARK3D.scene,
+          uirevision: p7UiRev,
+          camera: p7Camera || undefined,
+          xaxis: { ...DARK3D.scene.xaxis, title: "垄断程度" },
+          yaxis: { ...DARK3D.scene.yaxis, title: "低效程度" },
+          zaxis: { ...DARK3D.scene.zaxis, title: "综合税率（归一化）" },
+        }
+      }, { displayModeBar: true, responsive: true });
+    }
+
+    // controls
+    const betaEl = document.getElementById("beta");
+    const betaValEl = document.getElementById("betaVal");
+    const distEl = document.getElementById("dist");
+    const randBtn = document.getElementById("randBtn");
+    const hiliteEl = document.getElementById("hilite");
+
+    betaEl.addEventListener("input", (e) => {
+      beta = parseFloat(e.target.value);
+      betaValEl.textContent = beta.toFixed(2);
+      renderAll();
+    });
+
+    hiliteEl?.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const s = (hiliteEl.value ?? "").toString().trim();
+      const id = s === "" ? null : Number.parseInt(s, 10);
+      hiliteCommitted = (id != null && Number.isFinite(id) && id >= 0 && id < N) ? id : null;
+      renderAll();
+    });
+
+
+    distEl.addEventListener("change", (e) => { dist = e.target.value; });
+
+    randBtn.addEventListener("click", () => {
+      ({ V, L } = genData(dist));
+      renderAll();
+    });
+
+    betaValEl.textContent = beta.toFixed(2);
+    renderAll();
+  </script>
+</body>
+
+</html>
